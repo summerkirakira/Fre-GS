@@ -15,3 +15,4 @@ random_background: false
 rotation_lr: 0.001
 scaling_lr: 0.005
 position_lr_delay_mult: 0.01
+lambda_fft: 0.0

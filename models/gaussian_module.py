@@ -30,6 +30,8 @@ class GaussianModule(L.LightningModule):
         self.radii = None
 
         self.test_outputs = []
+        self.pass_filter = None
+        self.current_cut_off = 0
 
     def log_image(self, image: Tensor, gt_image: Tensor):
         concatenated_img = torch.cat([image, gt_image], dim=2)
@@ -89,7 +91,15 @@ class GaussianModule(L.LightningModule):
         self.log("l1_loss", Ll1)
         Lssim = ssim(image, gt_image)
         self.log("ssim_loss", Lssim)
-        loss = (1.0 - self.config.train.lambda_dssim) * Ll1 + self.config.train.lambda_dssim * (1.0 - Lssim)
+
+        if True:
+            fft_loss = self.fft_loss(image, gt_image)
+            self.log("fft_loss", fft_loss)
+
+            loss = (1.0 - self.config.train.lambda_dssim) * Ll1 + self.config.train.lambda_dssim * (1.0 - Lssim) + fft_loss * (1 - self.config.train.lambda_fft)
+        else:
+            loss = (1.0 - self.config.train.lambda_dssim) * Ll1 + self.config.train.lambda_dssim * (1.0 - Lssim)
+
         self.log("total_loss", loss)
 
         if self.global_step % 100 == 0:
@@ -161,3 +171,37 @@ class GaussianModule(L.LightningModule):
         if self.global_step % 1000 == 0:
             self.gaussians.oneupSHdegree()
         self.log("learning_rate", lr)
+
+    def get_pass_filter(self, cutoff: int):
+        if cutoff == self.current_cut_off:
+            return self.pass_filter
+
+        mask = torch.zeros((800, 800), dtype=torch.float32, device="cuda")
+        for i in range(800):
+            for j in range(800):
+                if (i - 400) ** 2 + (j - 400) ** 2 < cutoff ** 2:
+                    mask[i, j] = 1
+
+        self.pass_filter = mask
+        self.current_cut_off = cutoff
+        return mask
+
+    def get_cut_off(self):
+        if self.global_step < 1000:
+            return 200
+        return self.global_step // 1000 * 200
+
+    def fft_loss(self, image: Tensor, gt_image: Tensor) -> Tensor:
+        image_fft = torch.fft.fft2(image)
+        gt_image_fft = torch.fft.fft2(gt_image)
+        image_fft = torch.fft.fftshift(image_fft)
+        gt_image_fft = torch.fft.fftshift(gt_image_fft)
+
+        cut_off = self.get_cut_off()
+        pass_filter = self.get_pass_filter(cut_off)
+        image_fft = image_fft * pass_filter
+        gt_image_fft = gt_image_fft * pass_filter
+
+        self.log("cut_off_frequency", cut_off)
+
+        return torch.mean((image_fft - gt_image_fft).abs() ** 2) / 3000

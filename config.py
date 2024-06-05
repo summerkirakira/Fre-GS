@@ -21,6 +21,7 @@ class BasicConfig(BaseModel):
         random_background: bool
         rotation_lr: float
         scaling_lr: float
+        lambda_fft: float
 
     class Pipe(BaseModel):
         compute_cov3D_python: bool

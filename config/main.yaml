@@ -3,7 +3,7 @@ defaults:
   - pipe: default
   - dataset: ship
 
-project: gaussian_enhanced
+project: fre_gs
 name: Version 1
 
 ip: 127.0.0.1
